@@ -34,8 +34,9 @@ MAX6675 thermo[numZones] = {MAX6675(5, 6 ,7)};  // Pins connected to the thermoc
 const int heaterPin[numZones] = {9};            // Pins connected to relays for heating elements.  This is an array for each output pin (zone).
                                                 // Pins 10 thru 13 are for SD card.  These are automatically setup.
 
-LiquidCrystal lcd(19, 18, 17, 16, 15, 14);      // LCD display (connected to analog inputs / reverse order so I don't have to twist ribbon cable)
- 
+//rs, en, d4, d5, d6, d7
+LiquidCrystal lcd(14, 15, 16, 17, 18, 19);      // LCD display (connected to analog inputs / reverse order so I don't have to twist ribbon cable)
+
 // Setup other variables (DON'T CHANGE THESE)
 double calcSetPoint;        // Calculated set point (degrees)
 unsigned long holdStart;    // Exact time the hold phase of the segment started (ms).  Based on millis().

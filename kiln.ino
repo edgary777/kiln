@@ -256,7 +256,7 @@ void htrControl() {
       digitalWrite(heaterPin[i], LOW);
     }
     else {
-      digitalWrite(heaterPin[i], HGIH);
+      digitalWrite(heaterPin[i], HIGH);
     }
   }
 

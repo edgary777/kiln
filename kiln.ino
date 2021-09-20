@@ -19,7 +19,7 @@ double pidInput[numZones];             // Input array for PID loop (actual temp 
 double pidOutput[numZones];            // Output array for PID loop (relay for heater).  Don't change.
 double pidSetPoint[numZones];          // Setpoint array for PID loop (temp you are trying to reach).  Don't change.
 PID pidCont[numZones] = {PID(&pidInput[0], &pidOutput[0], &pidSetPoint[0], 800, 47.37, 4.93, DIRECT)};  // PID controller array for each zone.  Set arguments 4/5/6 to the Kp, Ki, Kd values after tuning.
-const long saveCycle = 15000;          // How often to save current temp / setpoint (ms) 
+const long saveCycle = 15000;          // How often to save current temp / setpoint (ms)
 const int tempOffset[numZones] = {0};  // Array to add a temp offset for each zone (degrees).  Use if you have a cold zone in your kiln or if your thermocouple reading is off.  This gets added to the setpoint.
 const int tempRange = 2;               // This is how close the temp reading needs to be to the set point to shift to the hold phase (degrees).  Set to zero or a positive integer.
 const char tempScale = 'F';            // Temperature scale.  F = Fahrenheit.  C = Celsius
@@ -69,14 +69,14 @@ void setup() {
   // Setup all pin modes on board.  Remove INPUT_PULLUP if you have resistors in your wiring.
   pinMode(upPin, INPUT_PULLUP);
   pinMode(downPin, INPUT_PULLUP);
-  pinMode(selectPin, INPUT_PULLUP); 
+  pinMode(selectPin, INPUT_PULLUP);
   for (i = 0; i < numZones; i++) {
     pinMode(heaterPin[i], OUTPUT);
   }
   for (i = 14; i <= 19; i++) {  // Change analog inputs to digital outputs for LCD screen
     pinMode(i, OUTPUT);
   }
-  
+
   // Setup lcd display (20 columns x 4 rows)
   lcd.begin(20,4);
 
@@ -112,7 +112,7 @@ void loop() {
       lcd.setCursor(2, 2);
       lcd.print(F("Max temp reached"));
       lcd.setCursor(0, 3);
-      lcd.print(F("System was shut down"));    
+      lcd.print(F("System was shut down"));
       shutDown();
     }
   }
@@ -120,21 +120,21 @@ void loop() {
   //******************************
   // Select a firing schedule
   if (segNum == 0) {
-    
+
     // Up arrow button
     if (digitalRead(upPin) == LOW && schedNum > 1) {
       schedNum = schedNum - 1;
       openSched();
       btnBounce(upPin);
     }
-    
+
     // Down arrow button
     if (digitalRead(downPin) == LOW) {
       schedNum = schedNum + 1;
       openSched();
-      btnBounce(downPin);          
+      btnBounce(downPin);
     }
-    
+
     // Select / Start button
     if (digitalRead(selectPin) == LOW && schedOK == true) {
       setupPIDs();
@@ -144,7 +144,7 @@ void loop() {
       rampStart = millis();
       schedStart = millis();
       updateLCD();
-      btnBounce(selectPin);      
+      btnBounce(selectPin);
     }
   }
 
@@ -161,9 +161,9 @@ void loop() {
         optionNum = optionNum - 1;
       }
       updateLCD();
-      btnBounce(upPin); 
+      btnBounce(upPin);
     }
-    
+
     // Down arrow button
     if (digitalRead(downPin) == LOW) {
       if (screenNum <= 2) {
@@ -173,7 +173,7 @@ void loop() {
         optionNum = optionNum + 1;
       }
       updateLCD();
-      btnBounce(downPin); 
+      btnBounce(downPin);
     }
 
     // Select / Start button
@@ -197,9 +197,9 @@ void loop() {
       }
 
       updateLCD();
-      btnBounce(selectPin);           
+      btnBounce(selectPin);
     }
- 
+
     // Update PID's / turn on heaters / update segment info
     if (screenNum < 4) {
       if (millis() - pidStart >= pidCycle) {
@@ -229,8 +229,8 @@ void loop() {
       saveFile.close();
 
       saveStart = millis();
-    }  
-    
+    }
+
   }
 
 }
@@ -242,7 +242,7 @@ void btnBounce(int btnPin) {
 
   while (digitalRead(btnPin) == LOW);
   delay(40);
-  
+
 }
 
 //******************************************************************************************************************************
@@ -253,13 +253,13 @@ void htrControl() {
   // Loop thru all zones
   for (i = 0; i < numZones; i++) {
     if (pidOutput[i] >= millis() - pidStart) {
-      digitalWrite(heaterPin[i], HIGH);
+      digitalWrite(heaterPin[i], LOW);
     }
     else {
-      digitalWrite(heaterPin[i], LOW);      
+      digitalWrite(heaterPin[i], HGIH);
     }
   }
-  
+
 }
 
 //******************************************************************************************************************************
@@ -284,7 +284,7 @@ int intLength(int myInt) {
   else {
     return 1;
   }
-  
+
 }
 
 //******************************************************************************************************************************
@@ -299,18 +299,18 @@ void openSched() {
   char tempLine[21];    // Temporary character array holder
   int tempLoc = 0;      // Current location of next character to place in tempLine array
   char schedDesc2[21];  // Schedule description #2 (second line of text file)
-  char schedDesc3[21];  // Schedule description #3 (third line of text file)  
+  char schedDesc3[21];  // Schedule description #3 (third line of text file)
 
   // Clear the arrays
   memset(schedDesc1, 0, sizeof(schedDesc1));
   memset(segRamp, 0, sizeof(segRamp));
-  memset(segTemp, 0, sizeof(segTemp)); 
+  memset(segTemp, 0, sizeof(segTemp));
   memset(segHold, 0, sizeof(segHold));
-  
+
   // Make sure you can open the file
   sprintf(tempLine, "%d.txt", schedNum);
   File myFile = SD.open(tempLine, FILE_READ);
-  
+
   if (myFile == false) {
     lcd.clear();
     lcd.print(F("SELECT SCHEDULE: "));
@@ -320,7 +320,7 @@ void openSched() {
     schedOK = false;
     return;
   }
- 
+
    // Load the data
   while (myFile.available() > 0) {
 
@@ -332,21 +332,21 @@ void openSched() {
       tempLine[tempLoc] = '\0';
     }
     else if (tempChar == 44) {  // Comma: Add null to end.
-      tempLine[tempLoc] = '\0';      
+      tempLine[tempLoc] = '\0';
     }
     else if (tempLoc <= 19) {   // Add it to the temp line array
       tempLine[tempLoc] = tempChar;
-      tempLoc = tempLoc + 1; 
+      tempLoc = tempLoc + 1;
     }
 
     if (row == 1 && tempChar == 13) {
       memcpy(schedDesc1, tempLine, 21);
     }
     else if (row == 2 && tempChar == 13) {
-      memcpy(schedDesc2, tempLine, 21);      
+      memcpy(schedDesc2, tempLine, 21);
     }
     else if (row == 3 && tempChar == 13) {
-      memcpy(schedDesc3, tempLine, 21);      
+      memcpy(schedDesc3, tempLine, 21);
     }
     else if (row >= 4 && col == 1 && tempChar == 44) {
       segRamp[row - 4] = atoi(tempLine);
@@ -370,7 +370,7 @@ void openSched() {
       tempLoc = 0;
       col = col + 1;
     }
-    
+
   }  // end of while(myFile.available ...
 
   // Close the file
@@ -388,7 +388,7 @@ void openSched() {
         segRamp[i] = -segRamp[i];
       }
     }
-  } 
+  }
 
   // Display on the screen
   lcd.clear();
@@ -397,7 +397,7 @@ void openSched() {
   lcd.setCursor(0, 1);
   lcd.print(schedDesc1);
   lcd.setCursor(0, 2);
-  lcd.print(schedDesc2);    
+  lcd.print(schedDesc2);
   lcd.setCursor(0, 3);
   lcd.print(schedDesc3);
 
@@ -418,7 +418,7 @@ void readTemps() {
     }
     if (tempScale == 'F') {
       pidInput[i] = thermo[i].readFahrenheit();
-    }    
+    }
   }
 
 }
@@ -445,11 +445,11 @@ void shutDown() {
   for (i = 0; i < numZones; i++) {
     digitalWrite(heaterPin[i], LOW);
   }
-  
+
   // Disable interrupts / Infinite loop
   cli();
   while (1);
-  
+
 }
 
 //******************************************************************************************************************************
@@ -465,8 +465,8 @@ void updateLCD() {
     lcd.print(F("TEMPS "));
     lcd.print((char)223);
     lcd.print(tempScale);
-    lcd.print(F(" Rdg / SetPt"));    
-     
+    lcd.print(F(" Rdg / SetPt"));
+
     for (i = 0; i < numZones; i++) {
       lcd.setCursor(1, i + 1);
       lcd.print(F("Zone "));
@@ -474,7 +474,7 @@ void updateLCD() {
       lcd.setCursor(12 - intLength((int)pidInput[i]), i + 1);
       lcd.print((int)pidInput[i]);
       lcd.print(F(" / "));
-      lcd.print((int)pidSetPoint[i]);      
+      lcd.print((int)pidSetPoint[i]);
     }
   }
 
@@ -490,7 +490,7 @@ void updateLCD() {
     lcd.print(segNum);
     lcd.print(F(" / "));
     lcd.print(lastSeg);
- 
+
     if (segPhase == 0) {
       lcd.setCursor(2, 2);
       lcd.print(F("Ramp to "));
@@ -513,7 +513,7 @@ void updateLCD() {
       lcd.print(F(" "));
       lcd.print((char)223);
       lcd.print(tempScale);
-      
+
       lcd.setCursor(2, 3);
       lcd.print(F("for "));
       lcd.print((millis() - holdStart) / 60000);
@@ -537,11 +537,11 @@ void updateLCD() {
     lcd.setCursor(19, optionNum);
     lcd.print(F("<"));
   }
-  
+
   // Schedule completed
   if (screenNum == 4) {
     readTemps();
-    
+
     lcd.print(F(" SCHEDULE COMPLETE"));
     lcd.setCursor(2, 1);
     lcd.print(F("Wait until cool"));
@@ -575,7 +575,7 @@ void updatePIDs() {
     lastTemp = segTemp[segNum - 2];
   }
 
-  // Calculate the new setpoint value.  Don't set above / below target temp  
+  // Calculate the new setpoint value.  Don't set above / below target temp
   if (segPhase == 0) {
     rampHours = (millis() - rampStart) / 3600000.0;
     calcSetPoint = lastTemp + (segRamp[segNum - 1] * rampHours);  // Ramp
@@ -592,7 +592,7 @@ void updatePIDs() {
 
   // Read the temperatures
   readTemps();
-  
+
   // Loop thru all PID controllers
   for (i = 0; i < numZones; i++) {
 
@@ -612,7 +612,7 @@ void updatePIDs() {
 void updateSeg() {
 
   // Start the hold phase
-  if ((segPhase == 0 && segRamp[segNum - 1] < 0 && pidInput[0] <= (segTemp[segNum - 1] + tempRange)) || 
+  if ((segPhase == 0 && segRamp[segNum - 1] < 0 && pidInput[0] <= (segTemp[segNum - 1] + tempRange)) ||
       (segPhase == 0 && segRamp[segNum - 1] >= 0 && pidInput[0] >= (segTemp[segNum - 1] - tempRange))) {
     segPhase = 1;
     holdStart = millis();

@@ -9,6 +9,11 @@
 #include <PID_v1.h>         // PID temp control library
 #include <SPI.h>            // Serial Peripheral Interface library
 #include <SD.h>             // SD memory card library (SPI is required)
+#include <Rotary.h>
+
+
+bool buttonAction = false;
+
 
 // Setup user variables (CHANGE THESE TO MATCH YOUR SETUP)
 const int lcdRefresh = 2500;           // Refresh rate to update screen when running (ms)
@@ -22,16 +27,18 @@ PID pidCont[numZones] = {PID(&pidInput[0], &pidOutput[0], &pidSetPoint[0], 800, 
 const long saveCycle = 15000;          // How often to save current temp / setpoint (ms)
 const int tempOffset[numZones] = {0};  // Array to add a temp offset for each zone (degrees).  Use if you have a cold zone in your kiln or if your thermocouple reading is off.  This gets added to the setpoint.
 const int tempRange = 2;               // This is how close the temp reading needs to be to the set point to shift to the hold phase (degrees).  Set to zero or a positive integer.
-const char tempScale = 'F';            // Temperature scale.  F = Fahrenheit.  C = Celsius
+const char tempScale = 'C';            // Temperature scale.  F = Fahrenheit.  C = Celsius
 
-// Setup pin connections (CHANGE THESE TO MATCH YOUR SETUP)
-                                                // Pins 0 + 1 are used for serial port
-const int upPin = 2;                            // Pin # connected to up arrow button
-const int downPin = 3;                          // Pin # connected to down arrow button
-const int selectPin = 4;                        // Pin # connected to select / start button
+// Rotary encoder is wired with the common to ground and the two
+// outputs to pins 2 and 3.
+Rotary rotary = Rotary(2, 3);
+
+//Rotary encoder's pushbutton is wired with the common to ground and the pin is set to inputPullup.
+int rotaryPush = 4;
+
 // thermocouple(SCK, CS, SO)
 MAX6675 thermo[numZones] = {MAX6675(5, 6 ,7)};  // Pins connected to the thermocouple card.  This is an array for each thermocouple (zone).
-const int heaterPin[numZones] = {9};            // Pins connected to relays for heating elements.  This is an array for each output pin (zone).
+const int heaterPin = 9;            // Pins connected to relays for heating elements.  This is an array for each output pin (zone).
                                                 // Pins 10 thru 13 are for SD card.  These are automatically setup.
 
 //rs, en, d4, d5, d6, d7
@@ -65,14 +72,11 @@ int segTemp[20];            // Target temp for each segment (degrees).
 //  SETUP: INITIAL SETUP (RUNS ONCE DURING START)
 //******************************************************************************************************************************
 void setup() {
-
+  Serial.begin(9600);
   // Setup all pin modes on board.  Remove INPUT_PULLUP if you have resistors in your wiring.
-  pinMode(upPin, INPUT_PULLUP);
-  pinMode(downPin, INPUT_PULLUP);
-  pinMode(selectPin, INPUT_PULLUP);
-  for (i = 0; i < numZones; i++) {
-    pinMode(heaterPin[i], OUTPUT);
-  }
+  pinMode(4, INPUT_PULLUP);
+  pinMode(heaterPin, OUTPUT);
+  digitalWrite(heaterPin, HIGH);
   for (i = 14; i <= 19; i++) {  // Change analog inputs to digital outputs for LCD screen
     pinMode(i, OUTPUT);
   }
@@ -116,27 +120,28 @@ void loop() {
       shutDown();
     }
   }
-
+  unsigned char result = rotary.process();
+  button();
   //******************************
   // Select a firing schedule
   if (segNum == 0) {
 
     // Up arrow button
-    if (digitalRead(upPin) == LOW && schedNum > 1) {
+    if (result == DIR_CCW && schedNum > 1) {
       schedNum = schedNum - 1;
       openSched();
-      btnBounce(upPin);
     }
 
     // Down arrow button
-    if (digitalRead(downPin) == LOW) {
+    if (result == DIR_CW) {
       schedNum = schedNum + 1;
       openSched();
-      btnBounce(downPin);
     }
 
     // Select / Start button
-    if (digitalRead(selectPin) == LOW && schedOK == true) {
+    if (buttonAction == true && schedOK == true) {
+      Serial.println("start selected");
+      buttonAction = false;
       setupPIDs();
       segNum = 1;
       lcdStart = millis();
@@ -144,7 +149,6 @@ void loop() {
       rampStart = millis();
       schedStart = millis();
       updateLCD();
-      btnBounce(selectPin);
     }
   }
 
@@ -153,7 +157,7 @@ void loop() {
   if (segNum >= 1) {
 
     // Up arrow button
-    if (digitalRead(upPin) == LOW) {
+    if (result == DIR_CCW) {
       if (screenNum == 2 || (screenNum == 3 && optionNum == 1)) {
         screenNum = screenNum - 1;
       }
@@ -161,11 +165,10 @@ void loop() {
         optionNum = optionNum - 1;
       }
       updateLCD();
-      btnBounce(upPin);
     }
 
     // Down arrow button
-    if (digitalRead(downPin) == LOW) {
+    if (result == DIR_CW) {
       if (screenNum <= 2) {
         screenNum = screenNum + 1;
       }
@@ -173,11 +176,11 @@ void loop() {
         optionNum = optionNum + 1;
       }
       updateLCD();
-      btnBounce(downPin);
     }
 
     // Select / Start button
-    if (digitalRead(selectPin) == LOW && screenNum == 3) {
+    if (buttonAction == true && screenNum == 3) {
+      buttonAction = false;
       if (optionNum == 1) {  // Add 5 min
         segHold[segNum - 1] = segHold[segNum - 1] + 5;
         optionNum = 1;
@@ -197,7 +200,6 @@ void loop() {
       }
 
       updateLCD();
-      btnBounce(selectPin);
     }
 
     // Update PID's / turn on heaters / update segment info
@@ -235,12 +237,38 @@ void loop() {
 
 }
 
+// Variables will change:
+int buttonState;             // the current reading from the input pin
+int lastButtonState = HIGH;   // the previous reading from the input pin
+
+// the following variables are unsigned longs because the time, measured in
+// milliseconds, will quickly become a bigger number than can be stored in an int.
+unsigned long lastDebounceTime = 0;  // the last time the output pin was toggled
+unsigned long debounceDelay = 50;    // the debounce time; increase if the output flickers
+
+void button(){
+  int reading = digitalRead(4);
+  if (reading != lastButtonState) {
+    lastDebounceTime = millis();
+  }
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    if (reading != buttonState) {
+      buttonState = reading;
+      if (buttonState == LOW) {
+        buttonAction = true;
+      } 
+    }
+  }
+  lastButtonState = reading;
+}
+
+
 //******************************************************************************************************************************
 //  BTNBOUNCE: HOLD UNTIL BUTTON IS RELEASED.  DELAY FOR ANY BOUNCE
 //******************************************************************************************************************************
 void btnBounce(int btnPin) {
 
-  while (digitalRead(btnPin) == LOW);
+  while (digitalRead(btnPin) == HIGH);
   delay(40);
 
 }
@@ -250,14 +278,11 @@ void btnBounce(int btnPin) {
 //******************************************************************************************************************************
 void htrControl() {
 
-  // Loop thru all zones
-  for (i = 0; i < numZones; i++) {
-    if (pidOutput[i] >= millis() - pidStart) {
-      digitalWrite(heaterPin[i], LOW);
-    }
-    else {
-      digitalWrite(heaterPin[i], HIGH);
-    }
+  if (pidOutput >= millis() - pidStart) { //FIX
+    digitalWrite(heaterPin, LOW);
+  }
+  else {
+    digitalWrite(heaterPin, HIGH);
   }
 
 }
@@ -442,9 +467,7 @@ void setupPIDs() {
 void shutDown() {
 
   // Turn off all zones (heating element relays)
-  for (i = 0; i < numZones; i++) {
-    digitalWrite(heaterPin[i], LOW);
-  }
+    digitalWrite(heaterPin, LOW);
 
   // Disable interrupts / Infinite loop
   cli();
@@ -627,9 +650,7 @@ void updateSeg() {
 
   // Check if complete / turn off all zones
   if (segNum - 1 > lastSeg) {
-    for (i = 0; i < numZones; i++) {
-      digitalWrite(heaterPin[i], LOW);
-    }
+    digitalWrite(heaterPin, HIGH);
     screenNum = 4;
   }
 

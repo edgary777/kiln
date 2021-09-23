@@ -145,10 +145,11 @@ void loop() {
       buttonAction = false;
       setupPID();
       segNum = 1;
-      lcdStart = millis();
-      pidStart = millis();
-      rampStart = millis();
-      schedStart = millis();
+      unsigned long mil = millis();
+      lcdStart = mil;
+      pidStart = mil;
+      rampStart = mil;
+      schedStart = mil;
       updateLCD();
     }
   }

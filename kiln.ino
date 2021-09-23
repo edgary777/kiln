@@ -96,8 +96,22 @@ void setup() {
     shutDown();
   }
 
+  lcd.setCursor(0,0);
+  lcd.print(F("YOU ARE ABOUT TO"));
+  lcd.setCursor(0,1);
+  lcd.print(F("DELETE YOUR LOGS"));
+  lcd.setCursor(0,2);
+  lcd.print(F("PRESS BTN TO ACCEPT"));
   // Delete old save file
+  while(1){
+    if (digitalRead(4) == LOW){
+      break;
+    }
+  }
+  lcd.clear();
+  lcd.print("deleting...");
   SD.remove("temps.txt");
+  delay(1000);
 
   // Open firing shedule # 1
   openSched();

@@ -18,14 +18,15 @@ bool buttonAction = false;
 // Setup user variables (CHANGE THESE TO MATCH YOUR SETUP)
 const int lcdRefresh = 2500;           // Refresh rate to update screen when running (ms)
 const int maxTemp = 1600;              // Maximum temperature (degrees).  If reached, will shut down.
-const int numZones = 1;                // Number of heating element + thermostat zones (max of 3)
 const int pidCycle = 2500;             // Time for a complete PID on/off cycle for the heating elements (ms)
-double pidInput[numZones];             // Input array for PID loop (actual temp reading from thermocouple).  Don't change.
-double pidOutput[numZones];            // Output array for PID loop (relay for heater).  Don't change.
-double pidSetPoint[numZones];          // Setpoint array for PID loop (temp you are trying to reach).  Don't change.
-PID pidCont[numZones] = {PID(&pidInput[0], &pidOutput[0], &pidSetPoint[0], 800, 47.37, 4.93, DIRECT)};  // PID controller array for each zone.  Set arguments 4/5/6 to the Kp, Ki, Kd values after tuning.
+double pidInput; //ACTUAL TEMP READING FROM THERMOCOUPLE.
+double pidOutput; //RELAY FOR HEATER.
+double pidSetPoint; // TEMP YOU ARE TRYING TO REACH.
+
+PID pidCont = PID(&pidInput, &pidOutput, &pidSetPoint, 800, 47.37, 4.93, DIRECT);
+
 const long saveCycle = 15000;          // How often to save current temp / setpoint (ms)
-const int tempOffset[numZones] = {0};  // Array to add a temp offset for each zone (degrees).  Use if you have a cold zone in your kiln or if your thermocouple reading is off.  This gets added to the setpoint.
+
 const int tempRange = 2;               // This is how close the temp reading needs to be to the set point to shift to the hold phase (degrees).  Set to zero or a positive integer.
 const char tempScale = 'C';            // Temperature scale.  F = Fahrenheit.  C = Celsius
 
@@ -37,7 +38,8 @@ Rotary rotary = Rotary(2, 3);
 int rotaryPush = 4;
 
 // thermocouple(SCK, CS, SO)
-MAX6675 thermo[numZones] = {MAX6675(5, 6 ,7)};  // Pins connected to the thermocouple card.  This is an array for each thermocouple (zone).
+MAX6675 thermo = MAX6675(5, 6 ,7);  // Pins connected to the thermocouple card.  This is an array for each thermocouple (zone).
+//MAX6675 thermo[numZones] = {MAX6675(5, 6 ,7)};  // Pins connected to the thermocouple card.  This is an array for each thermocouple (zone). OLD
 const int heaterPin = 9;            // Pins connected to relays for heating elements.  This is an array for each output pin (zone).
                                                 // Pins 10 thru 13 are for SD card.  These are automatically setup.
 
@@ -109,16 +111,16 @@ void loop() {
 
   //******************************
   // Shutdown if too hot
-  for (i = 0; i < numZones; i++) {
-    if (pidInput[i] >= maxTemp) {
-      lcd.clear();
-      lcd.print(F("       ERROR:"));
-      lcd.setCursor(2, 2);
-      lcd.print(F("Max temp reached"));
-      lcd.setCursor(0, 3);
-      lcd.print(F("System was shut down"));
-      shutDown();
-    }
+  // FIX
+  //CHANGE THIS FOR A TEMP RUNOFF WATCHDOG
+  if (pidInput >= maxTemp) {
+    lcd.clear();
+    lcd.print(F("       ERROR:"));
+    lcd.setCursor(2, 2);
+    lcd.print(F("Max temp reached"));
+    lcd.setCursor(0, 3);
+    lcd.print(F("System was shut down"));
+    shutDown();
   }
   unsigned char result = rotary.process();
   button();
@@ -140,9 +142,8 @@ void loop() {
 
     // Select / Start button
     if (buttonAction == true && schedOK == true) {
-      Serial.println("start selected");
       buttonAction = false;
-      setupPIDs();
+      setupPID();
       segNum = 1;
       lcdStart = millis();
       pidStart = millis();
@@ -217,24 +218,25 @@ void loop() {
       updateLCD();
       lcdStart = millis();
     }
-
-    // Save the temps to a file on SD card
-    if (millis() - saveStart >= saveCycle && pidInput[0] > 0 && screenNum < 4) {
-      saveFile = SD.open("temps.txt", FILE_WRITE);
-        saveFile.print((millis() - schedStart) / 60000.0); // Save in minutes
-        for (i = 0; i < numZones; i++) {
-          saveFile.print(",");
-          saveFile.print(pidInput[i]);
-        }
-        saveFile.print(",");
-        saveFile.println(pidSetPoint[0]);
-      saveFile.close();
-
-      saveStart = millis();
+    if (millis() - saveStart >= saveCycle && pidInput > 0 && screenNum < 4) {
+      saveSd();
     }
-
   }
 
+}
+
+
+void saveSd(){
+  // Save the temps to a file on SD card
+  saveFile = SD.open("temps.txt", FILE_WRITE);
+    saveFile.print((millis() - schedStart) / 60000.0); // Save in minutes
+    saveFile.print(",");
+    saveFile.print(pidInput);
+    saveFile.print(",");
+    saveFile.println(pidSetPoint);
+  saveFile.close();
+
+  saveStart = millis();
 }
 
 // Variables will change:
@@ -256,7 +258,7 @@ void button(){
       buttonState = reading;
       if (buttonState == LOW) {
         buttonAction = true;
-      } 
+      }
     }
   }
   lastButtonState = reading;
@@ -278,7 +280,7 @@ void btnBounce(int btnPin) {
 //******************************************************************************************************************************
 void htrControl() {
 
-  if (pidOutput >= millis() - pidStart) { //FIX
+  if (pidOutput >= millis() - pidStart) {
     digitalWrite(heaterPin, LOW);
   }
   else {
@@ -436,28 +438,18 @@ void openSched() {
 //******************************************************************************************************************************
 void readTemps() {
 
-  // Loop thru all zones
-  for (i = 0; i < numZones; i++) {
-    if (tempScale == 'C') {
-      pidInput[i] = thermo[i].readCelsius();
-    }
-    if (tempScale == 'F') {
-      pidInput[i] = thermo[i].readFahrenheit();
-    }
-  }
+  pidInput = thermo.readCelsius();
 
 }
 
 //******************************************************************************************************************************
-//  SETUPPIDS: INITIALIZE THE PID LOOPS
+//  SETUPPIDS: INITIALIZE THE PID LOOP
 //******************************************************************************************************************************
-void setupPIDs() {
+void setupPID() {
 
-  for (i = 0; i < numZones; i++) {
-    pidCont[i].SetSampleTime(pidCycle);
-    pidCont[i].SetOutputLimits(0, pidCycle);
-    pidCont[i].SetMode(AUTOMATIC);
-  }
+  pidCont.SetSampleTime(pidCycle);
+  pidCont.SetOutputLimits(0, pidCycle);
+  pidCont.SetMode(AUTOMATIC);
 
 }
 
@@ -485,20 +477,25 @@ void updateLCD() {
 
   // Temperatures
   if (screenNum == 1) {
-    lcd.print(F("TEMPS "));
-    lcd.print((char)223);
-    lcd.print(tempScale);
-    lcd.print(F(" Rdg / SetPt"));
+    lcd.setCursor(0,0);
+    lcd.print("display 1");
+    //FIX
+    //CHANGE THIS FOR BIGNUMBERS
 
-    for (i = 0; i < numZones; i++) {
-      lcd.setCursor(1, i + 1);
-      lcd.print(F("Zone "));
-      lcd.print(i + 1);
-      lcd.setCursor(12 - intLength((int)pidInput[i]), i + 1);
-      lcd.print((int)pidInput[i]);
-      lcd.print(F(" / "));
-      lcd.print((int)pidSetPoint[i]);
-    }
+    // lcd.print(F("TEMPS "));
+    // lcd.print((char)223);
+    // lcd.print(tempScale);
+    // lcd.print(F(" Rdg / SetPt"));
+    //
+    // for (i = 0; i < numZones; i++) {
+    //   lcd.setCursor(1, i + 1);
+    //   lcd.print(F("Zone "));
+    //   lcd.print(i + 1);
+    //   lcd.setCursor(12 - intLength((int)pidInput[i]), i + 1);
+    //   lcd.print((int)pidInput[i]);
+    //   lcd.print(F(" / "));
+    //   lcd.print((int)pidSetPoint[i]);
+    // }
   }
 
   // Schedule / segment info
@@ -572,7 +569,7 @@ void updateLCD() {
     lcd.print(F("before you open"));
     lcd.setCursor(2, 3);
     lcd.print(F("Zone 1: "));
-    lcd.print((int)pidInput[0]);
+    lcd.print((int)pidInput);
     lcd.print(F(" "));
     lcd.print((char)223);
     lcd.print(tempScale);
@@ -616,16 +613,11 @@ void updatePIDs() {
   // Read the temperatures
   readTemps();
 
-  // Loop thru all PID controllers
-  for (i = 0; i < numZones; i++) {
+  // Set the target temp.  Add any offset.
+  pidSetPoint = calcSetPoint;
 
-    // Set the target temp.  Add any offset.
-    pidSetPoint[i] = calcSetPoint + tempOffset[i];
-
-    // Update the PID based on new variables
-    pidCont[i].Compute();
-
-  }
+  // Update the PID based on new variables
+  pidCont.Compute();
 
 }
 
@@ -635,8 +627,8 @@ void updatePIDs() {
 void updateSeg() {
 
   // Start the hold phase
-  if ((segPhase == 0 && segRamp[segNum - 1] < 0 && pidInput[0] <= (segTemp[segNum - 1] + tempRange)) ||
-      (segPhase == 0 && segRamp[segNum - 1] >= 0 && pidInput[0] >= (segTemp[segNum - 1] - tempRange))) {
+  if ((segPhase == 0 && segRamp[segNum - 1] < 0 && pidInput <= (segTemp[segNum - 1] + tempRange)) ||
+      (segPhase == 0 && segRamp[segNum - 1] >= 0 && pidInput >= (segTemp[segNum - 1] - tempRange))) {
     segPhase = 1;
     holdStart = millis();
   }

@@ -11,14 +11,81 @@
 #include <SD.h>             // SD memory card library (SPI is required)
 #include <Rotary.h>
 
+const byte full[8] = {
+  0b11111,
+  0b11111,
+  0b11111,
+  0b11111,
+  0b11111,
+  0b11111,
+  0b11111,
+  0b11111
+};
+
+const byte upFull[8] = {
+  0b11111,
+  0b11111,
+  0b11111,
+  0b00000,
+  0b00000,
+  0b00000,
+  0b00000,
+  0b00000
+};
+
+const byte lowFull[8] = {
+  0b00000,
+  0b00000,
+  0b00000,
+  0b00000,
+  0b00000,
+  0b11111,
+  0b11111,
+  0b11111
+};
+
+const byte empty[8] = {
+  0b00000,
+  0b00000,
+  0b00000,
+  0b00000,
+  0b00000,
+  0b00000,
+  0b00000,
+  0b00000
+};
+
+const byte degree[8] = {
+  0b00100,
+  0b01110,
+  0b11011,
+  0b10001,
+  0b10001,
+  0b11011,
+  0b01110,
+  0b00100
+};
+
+const int** numbersArray[10][12]  = {
+  {1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1},
+  {1, 1, 0, 0, 1, 0, 0, 1, 0, 1, 1, 1},
+  {1, 1, 1, 2, 2, 1, 1, 3, 3, 1, 1, 1},
+  {1, 1, 1, 2, 2, 1, 3, 3, 1, 1, 1, 1},
+  {1, 0, 1, 1, 2, 1, 3, 3, 1, 0, 0, 1},
+  {1, 1, 1, 1, 2, 2, 3, 3, 1, 1, 1, 1},
+  {1, 3, 3, 1, 0, 0, 1, 3, 1, 1, 2, 1},
+  {1, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1},
+  {1, 3, 1, 1, 2, 1, 1, 3, 1, 1, 2, 1},
+  {1, 1, 1, 1, 0, 1, 3, 3, 1, 2, 2, 1}
+};
 
 bool buttonAction = false;
 
 
 // Setup user variables (CHANGE THESE TO MATCH YOUR SETUP)
-const int lcdRefresh = 2500;           // Refresh rate to update screen when running (ms)
+const int lcdRefresh = 500;           // Refresh rate to update screen when running (ms)
 const int maxTemp = 1600;              // Maximum temperature (degrees).  If reached, will shut down.
-const int pidCycle = 2500;             // Time for a complete PID on/off cycle for the heating elements (ms)
+const int pidCycle = 500;             // Time for a complete PID on/off cycle for the heating elements (ms)
 double pidInput; //ACTUAL TEMP READING FROM THERMOCOUPLE.
 double pidOutput; //RELAY FOR HEATER.
 double pidSetPoint; // TEMP YOU ARE TRYING TO REACH.
@@ -144,18 +211,21 @@ void loop() {
 
     // Up arrow button
     if (result == DIR_CCW && schedNum > 1) {
+      lcd.clear();
       schedNum = schedNum - 1;
       openSched();
     }
 
     // Down arrow button
     if (result == DIR_CW) {
+      lcd.clear();
       schedNum = schedNum + 1;
       openSched();
     }
 
     // Select / Start button
     if (buttonAction == true && schedOK == true) {
+      lcd.clear();
       buttonAction = false;
       setupPID();
       segNum = 1;
@@ -174,6 +244,7 @@ void loop() {
 
     // Up arrow button
     if (result == DIR_CCW) {
+      lcd.clear();
       if (screenNum == 2 || (screenNum == 3 && optionNum == 1)) {
         screenNum = screenNum - 1;
       }
@@ -185,6 +256,7 @@ void loop() {
 
     // Down arrow button
     if (result == DIR_CW) {
+      lcd.clear();
       if (screenNum <= 2) {
         screenNum = screenNum + 1;
       }
@@ -196,6 +268,7 @@ void loop() {
 
     // Select / Start button
     if (buttonAction == true && screenNum == 3) {
+      lcd.clear();
       buttonAction = false;
       if (optionNum == 1) {  // Add 5 min
         segHold[segNum - 1] = segHold[segNum - 1] + 5;
@@ -238,6 +311,37 @@ void loop() {
     }
   }
 
+}
+
+
+void bigNumbers(char number, int Offset) {
+
+  int column = 0;
+  for (int row = 0; row < 4; row++) {
+    //column, row
+    lcd.setCursor(column + Offset, row);
+    for (int x = 0; x < 3; x++) {
+      int character = int(numbersArray[number - '0'][x + (row * 3)]);
+      lcd.write(byte(character));
+      //delay(2000);
+    }
+  }
+}
+
+
+int prevLen = 0;
+
+void printBigBuffer(char *numbers){
+  if (prevLen != strlen(numbers)){
+    lcd.clear();
+  }
+  prevLen = strlen(numbers);
+  for (int i = 0; i < strlen(numbers); i++)
+  {
+    bigNumbers(numbers[i], (i * 3) + i);
+  }
+  lcd.setCursor(strlen(numbers) * 4, 0);
+  lcd.write(byte(4));
 }
 
 
@@ -488,33 +592,22 @@ void shutDown() {
 void updateLCD() {
 
   // Clear screen and set cursor to top left
-  lcd.clear();
+//  lcd.clear();
 
   // Temperatures
   if (screenNum == 1) {
-    lcd.setCursor(0,0);
-    lcd.print("display 1");
-    //FIX
-    //CHANGE THIS FOR BIGNUMBERS
-
-    // lcd.print(F("TEMPS "));
-    // lcd.print((char)223);
-    // lcd.print(tempScale);
-    // lcd.print(F(" Rdg / SetPt"));
-    //
-    // for (i = 0; i < numZones; i++) {
-    //   lcd.setCursor(1, i + 1);
-    //   lcd.print(F("Zone "));
-    //   lcd.print(i + 1);
-    //   lcd.setCursor(12 - intLength((int)pidInput[i]), i + 1);
-    //   lcd.print((int)pidInput[i]);
-    //   lcd.print(F(" / "));
-    //   lcd.print((int)pidSetPoint[i]);
-    // }
+    char numChar[intLength(pidInput) + 1];
+    itoa(pidInput, numChar, 10);
+    printBigBuffer(numChar);
+    lcd.setCursor(16, 2);
+    lcd.write("goal");
+    lcd.setCursor(16, 3);
+    lcd.print(int(pidSetPoint));
   }
 
   // Schedule / segment info
   if (screenNum == 2) {
+    lcd.setCursor(0, 0);
     lcd.print(F("SCH "));
     lcd.print(schedNum);
     lcd.print(F(": "));
@@ -560,6 +653,7 @@ void updateLCD() {
 
   // Tools
   if (screenNum == 3) {
+    lcd.setCursor(0, 0);
     lcd.print(F("       TOOLS:"));
     lcd.setCursor(2, 1);
     lcd.print(F("Add 5 min"));
@@ -577,6 +671,7 @@ void updateLCD() {
   if (screenNum == 4) {
     readTemps();
 
+    lcd.setCursor(0, 0);
     lcd.print(F(" SCHEDULE COMPLETE"));
     lcd.setCursor(2, 1);
     lcd.print(F("Wait until cool"));

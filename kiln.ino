@@ -11,16 +11,6 @@
 #include <SD.h>             // SD memory card library (SPI is required)
 #include <Rotary.h>
 
-const byte full[8] = {
-  0b11111,
-  0b11111,
-  0b11111,
-  0b11111,
-  0b11111,
-  0b11111,
-  0b11111,
-  0b11111
-};
 
 const byte upFull[8] = {
   0b11111,
@@ -55,16 +45,17 @@ const byte empty[8] = {
   0b00000
 };
 
-const byte degree[8] = {
-  0b00100,
-  0b01110,
-  0b11011,
-  0b10001,
-  0b10001,
-  0b11011,
-  0b01110,
-  0b00100
+const byte full[8] = {
+  0b11111,
+  0b11111,
+  0b11111,
+  0b11111,
+  0b11111,
+  0b11111,
+  0b11111,
+  0b11111
 };
+
 
 const int** numbersArray[10][12]  = {
   {1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1},
@@ -109,7 +100,8 @@ MAX6675 thermo = MAX6675(5, 6 ,7);  // Pins connected to the thermocouple card. 
 //MAX6675 thermo[numZones] = {MAX6675(5, 6 ,7)};  // Pins connected to the thermocouple card.  This is an array for each thermocouple (zone). OLD
 const int heaterPin = 9;            // Pins connected to relays for heating elements.  This is an array for each output pin (zone).
                                                 // Pins 10 thru 13 are for SD card.  These are automatically setup.
-
+const int redundantHeater = 8;
+bool scheduleStartup = false;
 //rs, en, d4, d5, d6, d7
 LiquidCrystal lcd(14, 15, 16, 17, 18, 19);      // LCD display (connected to analog inputs / reverse order so I don't have to twist ribbon cable)
 
@@ -145,13 +137,20 @@ void setup() {
   // Setup all pin modes on board.  Remove INPUT_PULLUP if you have resistors in your wiring.
   pinMode(4, INPUT_PULLUP);
   pinMode(heaterPin, OUTPUT);
+  pinMode(redundantHeater, OUTPUT);
+  digitalWrite(redundantHeater, LOW);
   digitalWrite(heaterPin, HIGH);
   for (i = 14; i <= 19; i++) {  // Change analog inputs to digital outputs for LCD screen
     pinMode(i, OUTPUT);
   }
 
   // Setup lcd display (20 columns x 4 rows)
+
   lcd.begin(20,4);
+  lcd.createChar(0, empty);
+  lcd.createChar(1, full);
+  lcd.createChar(2, lowFull);
+  lcd.createChar(3, upFull);
 
   // Setup SD card
   if (SD.begin() == false) {
@@ -241,6 +240,10 @@ void loop() {
   //******************************
   // Running the firing schedule
   if (segNum >= 1) {
+    if (scheduleStartup == false){
+      digitalWrite(8, HIGH);
+      scheduleStartup = true;
+    }
 
     // Up arrow button
     if (result == DIR_CCW) {
@@ -341,7 +344,7 @@ void printBigBuffer(char *numbers){
     bigNumbers(numbers[i], (i * 3) + i);
   }
   lcd.setCursor(strlen(numbers) * 4, 0);
-  lcd.write(byte(4));
+  lcd.print("o");
 }
 
 
@@ -578,7 +581,8 @@ void setupPID() {
 void shutDown() {
 
   // Turn off all zones (heating element relays)
-    digitalWrite(heaterPin, LOW);
+    digitalWrite(heaterPin, HIGH);
+    digitalWrite(redundantHeater, LOW);
 
   // Disable interrupts / Infinite loop
   cli();
@@ -753,6 +757,7 @@ void updateSeg() {
   // Check if complete / turn off all zones
   if (segNum - 1 > lastSeg) {
     digitalWrite(heaterPin, HIGH);
+    digitalWrite(redundantHeater, LOW);
     screenNum = 4;
   }
 
